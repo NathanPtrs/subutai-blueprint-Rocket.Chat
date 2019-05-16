@@ -1,0 +1,115 @@
+# Ansible Playbook for Subutai Rocket.Chat blueprint
+---
+
+- hosts: rc
+  remote_user: root
+  tasks:
+    - name: Upgrade debian
+      apt:
+        update_cache: true
+        upgrade: true
+        
+    - name: Install dirmngr and curl
+      apt:
+        name: "{{ item }}"
+        state: present
+      with_items: 
+        - dirmngr
+        - curl
+        
+    - name: Add MongoDB key
+      apt_key:
+        keyserver: keyserver.ubuntu.com
+        id: 2930ADAE8CAF5059EE73BB4B58712A2291FA4AD5
+
+    - name: Install sources list for MongoDB
+      template: 
+        src: files/mongodb-org-3.6.list
+        dest: /etc/apt/sources.list.d/mongodb-org-3.6.list
+
+    - name: Upgrade debian again for MongoDB
+      apt:
+        update_cache: true
+        upgrade: true
+        
+    - name: download setup_8.x file to tmp dir
+      get_url:
+        url: https://deb.nodesource.com/setup_8.x
+        dest: /tmp/
+        mode: 0755
+        
+    - name: execute setup_8.x script
+      shell: /tmp/setup_8.x
+      args:
+        chdir: /tmp/
+        
+    - name: Install required debs
+      apt:
+        name: "{{ item }}"
+        state: present
+      with_items: 
+        - build-essential
+        - mongodb-org
+        - nodejs
+        - graphicsmagick
+        
+    - name: Install n
+      shell: npm install -g inherits n
+      
+    - name: Install Node v. 8.11.3
+      shell: n 8.11.3
+
+    - name: Download Rocket.Chat 0.74.3
+      get_url: url=https://releases.rocket.chat/0.74.3/download/ dest=/tmp/rocket.chat.tgz
+
+    - name: Extract Rocket.Chat 0.74.3
+      unarchive: src=/tmp/rocket.chat.tgz
+                 dest=/opt/
+                 copy=no
+                   
+    - name: Rename Rocket.Chat directory
+      shell: mv /opt/bundle /opt/RocketChat
+
+    - name: Run npm in server directory
+      shell: npm install
+      args:
+        chdir: /opt/RocketChat/programs/server
+
+    - name: Add the Rocket.Chat user
+      user:
+        name: rocketchat
+        create_home: no
+
+    - name: Change ownership of server directory to Rocket.Chat user
+      file: 
+        path: /opt/RocketChat
+        recurse: yes
+        owner: rocketchat
+        group: rocketchat
+
+    - name: Install Rocket.Chat service file
+      template: 
+        src: files/rocketchat.service
+        dest: /lib/systemd/system/rocketchat.service
+
+    - name: Reload systemd config
+      systemd:
+        daemon_reload: yes
+        
+    - name: Enable mongod and start
+      systemd:
+        name: mongod
+        enabled: yes
+        masked: no
+        state: started
+        
+# Pause for 20 seconds to let MongoDB start
+    - pause:
+        seconds: 20
+        
+    - name: Enable rocketchat and start
+      systemd:
+        name: rocketchat
+        enabled: yes
+        masked: no
+        state: started
