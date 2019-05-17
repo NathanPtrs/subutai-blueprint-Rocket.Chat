@@ -113,3 +113,7 @@
         enabled: yes
         masked: no
         state: started
+        
+# Pause for 20 seconds to let Rocket.Chat start
+    - pause:
+        seconds: 20
